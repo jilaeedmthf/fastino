@@ -195,7 +195,11 @@ class Fastino(Module):
         ]
 
         self.comb += [
-            platform.request("dac_clr_n").eq(~cfg.dac_clr),
+            # SPI reset intentionally clears previously commanded outputs.
+            # Keep assertion independent of a running SPI clock; release only
+            # after the serializer has completed its startup midscale transfer.
+            platform.request("dac_clr_n").eq(
+                ~(cfg.dac_clr | ResetSignal("spi") | self.spi.startup_clear)),
             platform.request("en_afe_pwr").eq(~cfg.afe_pwr_n),
             #platform.request("test_point", 2).eq(self.link.delay[0]),
             #platform.request("test_point", 3).eq(self.link.delay[1]),

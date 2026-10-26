@@ -23,7 +23,9 @@ class Interpolator(Module):
         assert cic.latency < n_channels
 
         reset = Signal(n_channels, reset_less=True)
-        enable = Signal(3*n_channels, reset_less=True)
+        # Do not emit pre-reset updates after the startup zero transfer when
+        # delayed idle frames resume shifting this pipeline.
+        enable = Signal(3*n_channels)
         sr = [Signal(n_bits, reset_less=True)
               for _ in range(2*n_channels - cic.latency)]
 

@@ -11,6 +11,11 @@ class MultiSPI(Module):
         spi = [platform.request("dac", i) for i in range(32)]
 
         self.busy = Signal()
+        # Held through an autonomous full midscale transfer after configuration
+        # and every SPI-domain reset. The top level also ORs in spi.rst so clear
+        # asserts even when the SPI clock is stopped.
+        self.startup_clear = Signal(reset=1)
+        startup_phase = Signal(max=5)
         # bit counter
         i = Signal(max=n_bits)
         # SPI data shift registers
@@ -28,11 +33,36 @@ class MultiSPI(Module):
             ),
             If(self.busy,
                 i.eq(i + 1),
-            ).Elif(self.stb,
+            ).Elif(self.stb & ~self.startup_clear,
                 self.busy.eq(1),
                 Cat(enable, sr).eq(self.data),
             ),
             enable0.eq(enable),
+            If(self.startup_clear,
+                If(startup_phase == 0,
+                    # Flush old enable/IO state under clear before starting.
+                    enable.eq(0),
+                    i.eq(0),
+                    self.busy.eq(0),
+                    startup_phase.eq(1),
+                ).Elif(startup_phase == 1,
+                    enable.eq((1 << n_channels) - 1),
+                    [sri.eq(1 << (n_bits - 1)) for sri in sr],
+                    i.eq(0),
+                    self.busy.eq(1),
+                    startup_phase.eq(2),
+                ).Elif(startup_phase == 2,
+                    # busy falls at the last bit. The following edge clocks
+                    # enable=0 through the registered, inverted CS output.
+                    If(~self.busy, startup_phase.eq(3)),
+                ).Elif(startup_phase == 3,
+                    startup_phase.eq(4),
+                ).Else(
+                    # Two 21 ns cycles after registered CS rises: 42 ns margin
+                    # before CLR release. Normal transfers retain their timing.
+                    self.startup_clear.eq(0),
+                ),
+            ),
         ]
         for i in range(n_channels):
             self.specials += [
