@@ -1,7 +1,7 @@
 from math import gcd
 
 from migen import *
-from migen.genlib.cdc import AsyncResetSynchronizer
+from migen.genlib.cdc import AsyncResetSynchronizer, MultiReg
 
 from interpolator import Interpolator
 from frame import Frame
@@ -44,6 +44,7 @@ class Fastino(Module):
         ])
         cfg_comb = Record(cfg.layout)
         unlock = Signal(reset=1)
+        spi_ready = Signal()
 
         # slow MISO lane, TBD
         sdo = Signal()
@@ -70,12 +71,19 @@ class Fastino(Module):
                       platform.request("cbsel"),
                       platform.request("sw"),
                       platform.request("hw_rev"),
-                      C(0, 3),  # gw version
+                      C(1, 3),  # fork status ABI v1; not an upstream release
                       unlock,
                       self.link.delay,
                       self.link.align_err,
                       self.frame.crc_err,
-                      cfg.raw_bits())
+                      cfg.raw_bits(),
+                      spi_ready)  # bit 61; legacy offsets above stay unchanged
+        # One source-coherent diagnostic word. Ready means serializer startup
+        # completed, not CIC initialization, valid gain or a fresh host read.
+        # Word 5: ready, reset_seen, 12-bit signature/version 0xa51.
+        status_ = Cat(status_, C(0, 70 - len(status_)),
+                      spi_ready, unlock, C(0xa51, 12))
+        self.status = status
         assert len(status_) <= len(status)
 
         self.comb += [
@@ -94,7 +102,6 @@ class Fastino(Module):
                     for i in range(1 << len(adr))])[adr]),
             ),
             If(cfg.clr_err,
-                unlock.eq(0),
                 self.frame.crc_err.eq(0),
             ),
             have_crc_err.eq(self.frame.crc_err != 0),
@@ -192,6 +199,39 @@ class Fastino(Module):
             self.spi.data.eq(body),
         #    self.spi.data.eq(self.frame.body[-len(self.spi.data):]),
         #    self.spi.stb.eq(self.frame.stb),
+        ]
+
+        # Capture every assertion of the existing asynchronous SPI reset chain,
+        # even if SPI or word clocks stop. A native async-set flop retains the
+        # event; sys-domain synchronizers keep its asynchronous output out of
+        # the serialized status logic. Reset assertion dominates acknowledgement.
+        reset_seen = Signal()
+        ready_raw = Signal()
+        clr_err_previous = Signal()
+        acknowledge_armed = Signal()
+        acknowledge = Signal()
+        self.comb += [
+            ready_raw.eq(~(ResetSignal("spi") | self.spi.startup_clear)),
+            acknowledge.eq(cfg.clr_err & ~clr_err_previous &
+                           acknowledge_armed & spi_ready & ready_raw &
+                           ~ResetSignal("sys")),
+        ]
+        self.sync += clr_err_previous.eq(cfg.clr_err)
+        self.specials += [
+            # A reset invalidates even a pending acknowledgement while sys is
+            # stopped. Only an actual low frame after reset release can rearm;
+            # cfg's reset default is not a received command. High consumes the
+            # arm even if readiness rejects acknowledgement at that edge.
+            Instance("SB_DFFR", i_C=ClockSignal("sys"),
+                     i_R=ResetSignal("spi") | ResetSignal("sys"),
+                     i_D=(self.frame.stb & ~cfg_comb.clr_err) |
+                         (acknowledge_armed & ~cfg.clr_err),
+                     o_Q=acknowledge_armed),
+            Instance("SB_DFFS", i_C=ClockSignal("sys"),
+                     i_S=ResetSignal("spi") | ResetSignal("sys"),
+                     i_D=reset_seen & ~acknowledge, o_Q=reset_seen),
+            MultiReg(reset_seen, unlock, "sys", reset=1),
+            MultiReg(ready_raw, spi_ready, "sys"),
         ]
 
         self.comb += [

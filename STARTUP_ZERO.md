@@ -1,5 +1,12 @@
 # Fastino startup zero on the v0.2 base
 
+The original bench observations and image hash in this note describe commit
+`baa5bf7a687bbaaee2451b08fef85c87f78b55e6`. The current revised image adds
+status and validation corrections and passed new all-channel cold-start and
+CH0 R1/R16/R64 checks on 2026-10-29. See
+[the review corrections and current bench results](REVIEW_CORRECTIONS.md).
+The two images and their evidence are recorded separately.
+
 This branch establishes a known zero output after FPGA startup and SPI-domain
 reset. It is based on QUARTIQ v0.2, commit
 `d451a0e88b3302b5f1a7f5e6c1ef48f7a109ab10`, and was tested on Fastino PCB v1.2
@@ -37,7 +44,7 @@ The ARTIQ Python API and grouped-write format do not change. The pinned
 ARTIQ 8 `Fastino.init()` does not assert SPI/PLL reset and is not a replacement
 for explicitly commanding the desired output voltages.
 
-## Validation
+## Original-image validation
 
 Digital tests use generated Migen RTL, the Yosys iCE40 SB_IO model and an
 AD5542A DAC model. Checks cover all 32 channels, undefined/random DAC serial
@@ -76,25 +83,22 @@ readback and recovery records remain in the laboratory bench archive.
 
 ## Reproducing the recorded build and simulations
 
-`offline_tests` contains the unchanged scripts used for the verified candidate.
-They target the recorded Nix environment and place generated results under
-`/tmp`; their absolute dependency paths are intentional provenance, not a
-portable installation recipe. Run build before simulation, because the latter
-checks RAM initialization from that packed build:
-
-```bash
-bash offline_tests/build_candidate.sh
-bash offline_tests/run_checks.sh
-```
+To reproduce the historical installed image, use the scripts at commit
+`baa5bf7a687bbaaee2451b08fef85c87f78b55e6` and its recorded Nix environment.
+The current scripts have configurable tools and explicit output/image
+arguments; see [the current reproduction instructions](REVIEW_CORRECTIONS.md#reproduction).
+Running the current source builds the revised source described there. A default
+simulation run without an image is only a partial check.
 
 Recorded tools: Python 3.12.7, Migen 0.9.2, MiSoC 0.13, Yosys 0.47,
 nextpnr 0.7, IceStorm 2020.12.04 and Icarus Verilog 12.0. Migen/MiSoC differ
 from the commits listed in upstream requirements.txt; those upstream commits
-also elaborated but RTL equivalence was not established. The tested package
-paths are explicit in the scripts. Adapting the scripts to another environment
-requires new validation; this branch does not claim portable reproducibility.
+also elaborated but RTL equivalence was not established. The historical tested
+package paths are explicit in that commit's scripts. Adapting the build to
+another environment requires new validation; configurable paths alone do not
+establish an identical image.
 
-Installed/tested binary: 135,100 bytes, SHA-256
+Original installed/tested binary: 135,100 bytes, SHA-256
 `1dcbdab60794b80f86b6f1e23d0f2de77674e569622b142d36f69fac268bf47a`.
 The binary is retained in the laboratory archive; it is not automatically
 rebuilt or installed by these instructions.

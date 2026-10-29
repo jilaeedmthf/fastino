@@ -1,6 +1,10 @@
 `timescale 1ns/1ps
 // Functional AD5542A model: Rev C pp6,8,15,17. Analog rails, analog settling,
 // and the interval before FPGA configuration are outside this model.
+// Assumption: CS/LDAC updates cannot overwrite the DAC register while CLR=0.
+// Rev C p8 suppresses LDAC pulses, but does not explicitly settle the case of
+// CS rising with LDAC tied low. +cs_updates_under_clear deliberately selects
+// the competing interpretation; its expected failure exposes this dependency.
 // https://www.analog.com/media/en/technical-documentation/data-sheets/AD5512A_5542A.pdf
 module ad5542a_model #(parameter CHANNEL=0)(
     input sclk, nss, sdi, ldacn, clr_n,
@@ -50,7 +54,8 @@ module ad5542a_model #(parameter CHANNEL=0)(
         // over it by accepting only transactions with 16 clocks.
         input_word=serial_word;
         if (bits_seen==16 && serial_word===16'h8000) zero_transfers=zero_transfers+1;
-        if (clr_n===1'b1 && ldacn===1'b0) dac_code=input_word;
+        if ((clr_n===1'b1 || $test$plusargs("cs_updates_under_clear")) &&
+            ldacn===1'b0) dac_code=input_word;
         if (bits_seen>0 && $realtime-last_rise<5.0) $fatal(1,"CS hold ch%0d",CHANNEL);
     end
     always @(negedge clr_n) begin

@@ -80,6 +80,11 @@ module tb;
         ad5542a_model #(.CHANNEL(g+32)) dac(.sclk(isclk[g]),.nss(inss[g]),.sdi(isdi[g]),
             .ldacn(ildac[g]),.clr_n(iclr),.dac_code(icodes[g]),.input_word(),
             .serial_word(),.bits_seen(),.zero_transfers());
+        always @(icodes[g]) begin
+            #0.01;
+            if(iclr===0 && icodes[g]!==16'h8000)
+                $fatal(1,"integrated partial/nonzero escaped CLR ch%0d",g);
+        end
     end endgenerate
     reg expect_idle_mask=0;
     always @(posedge spi_clk) if(expect_idle_mask && pstb && pen!==0)
@@ -182,6 +187,18 @@ module tb;
         if(clr_n!==0) $fatal(1,"software clear precedence");
         soft_clear=0; #1; zero_check;
         $display("PASS software clear after nonzero and during startup");
+
+        // Interrupt an ordinary nonzero transfer at each serial-bit position,
+        // with clocks continuing. Continuous DAC-code monitors remain active.
+        for(phase=0;phase<18;phase=phase+1) begin
+            low_edge;
+            data[31:0]=32'hffffffff;
+            for(j=0;j<32;j=j+1) data[32+16*j+:16]=word(j,90+phase);
+            stb=1; tick(1); low_edge; stb=0;
+            if(phase>0) tick(phase);
+            restart;
+        end
+        $display("PASS running-clock reset at all18 normal-transfer phases");
 
         // Keep data queued across handover: startup owns the bus first, then
         // the first ordinary strobe after startup is serviced unchanged.

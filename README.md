@@ -2,6 +2,12 @@
 
 # Fastino gateware and software development
 
+This fork's `startup-zero-v0.2` branch establishes settled zero outputs after
+startup and SPI reset. See [startup-zero behavior](STARTUP_ZERO.md) and
+[the review corrections, current image identity and bench results](REVIEW_CORRECTIONS.md).
+The current revision passed all-channel cold-start and CH0 R1/R16/R64 checks
+on Fastino PCB v1.2 with ARTIQ 8; the notes retain the remaining limitations.
+
 * Fastino is a 32 channels, 2 M/s simultaneous, 16 bit DAC
 * [AD5542ABCPZ](https://www.analog.com/media/en/technical-documentation/data-sheets/AD5512A_5542A.pdf)
 

@@ -84,8 +84,6 @@ def main():
     parser.add_argument("output", type=Path)
     args = parser.parse_args()
     output = args.output.resolve()
-    if not output.is_relative_to(Path("/tmp")):
-        raise ValueError("Generated RTL belongs under /tmp")
     output.mkdir(parents=True, exist_ok=True)
     baseline = output / "baseline_multispi.py"
     baseline.write_bytes(subprocess.check_output(
